@@ -55,7 +55,7 @@ func TestTail(t *testing.T) {
 }
 
 func writeFile(tmpdir string, t *testing.T) error {
-	time.Sleep(1 * time.Second) // wait for start Tail...
+	time.Sleep(2 * time.Second) // wait for start Tail...
 
 	filename := filepath.Join(tmpdir, "test.log")
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
