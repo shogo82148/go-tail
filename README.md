@@ -12,3 +12,9 @@ for {
   }
 }
 ```
+
+# SEE ALSO
+
+- https://github.com/mattn/gotail
+- https://github.com/ActiveState/tail
+- https://github.com/fujiwara/fluent-agent-hydra/blob/master/hydra/in_tail.go
