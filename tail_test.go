@@ -1,7 +1,9 @@
 package tail
 
 import (
+	"bufio"
 	"errors"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -38,14 +40,14 @@ func TestTailFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdir)
 
-	go writeFile(tmpdir, t)
+	go writeFile(t, tmpdir)
 	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	expected := strings.Join(Logs, "")
-	actual, err := recieve(tail, t)
+	actual, err := recieve(t, tail)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +56,28 @@ func TestTailFile(t *testing.T) {
 	}
 }
 
-func writeFile(tmpdir string, t *testing.T) error {
+func TestTailReader(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+
+	go writeWriter(t, writer)
+	tail, err := NewTailReader(reader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := strings.Join(Logs, "")
+	actual, err := recieve(t, tail)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if actual != expected {
+		t.Errorf("got %s\nwant %s", actual, expected)
+	}
+}
+
+func writeFile(t *testing.T, tmpdir string) error {
 	time.Sleep(2 * time.Second) // wait for start Tail...
 
 	filename := filepath.Join(tmpdir, "test.log")
@@ -86,7 +109,23 @@ func writeFile(tmpdir string, t *testing.T) error {
 	return nil
 }
 
-func recieve(tail *Tail, t *testing.T) (string, error) {
+func writeWriter(t *testing.T, writer io.Writer) error {
+	time.Sleep(2 * time.Second) // wait for start Tail...
+
+	w := bufio.NewWriter(writer)
+	for _, line := range Logs {
+		_, err := w.WriteString(line)
+		if err != nil {
+			return err
+		}
+		w.Flush()
+		t.Logf("write: %s", line)
+		time.Sleep(1 * time.Millisecond)
+	}
+	return nil
+}
+
+func recieve(t *testing.T, tail *Tail) (string, error) {
 	actual := ""
 	for {
 		select {

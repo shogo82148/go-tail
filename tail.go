@@ -30,7 +30,7 @@ type Tail struct {
 	buf      string
 }
 
-// NewTailFile tails a file
+// NewTailFile starts tailing a file
 func NewTailFile(filename string) (*Tail, error) {
 	filename, err := filepath.Abs(filename)
 	if err != nil {
@@ -49,8 +49,19 @@ func NewTailFile(filename string) (*Tail, error) {
 		filename: filename,
 		watcher:  watcher,
 	}
-	go t.run()
+	go t.runFile()
 
+	return t, nil
+}
+
+// NewTailReader starts tailing io.Reader
+func NewTailReader(reader io.Reader) (*Tail, error) {
+	t := &Tail{
+		Lines:  make(chan *Line),
+		Errors: make(chan error),
+		reader: bufio.NewReader(reader),
+	}
+	go t.runReader()
 	return t, nil
 }
 
@@ -72,7 +83,8 @@ func (t *Tail) open(seek int) {
 	}
 }
 
-func (t *Tail) run() {
+// runFile tails a file
+func (t *Tail) runFile() {
 	t.open(os.SEEK_END)
 	for {
 		if err := t.eventLoop(); err != nil {
@@ -82,8 +94,15 @@ func (t *Tail) run() {
 	}
 }
 
-// Read lines until EOF
-func (t *Tail) tail() error {
+// runReader tails io.Reader
+func (t *Tail) runReader() {
+	if err := t.tail(); err != nil {
+		t.Errors <- err
+	}
+}
+
+// restrict detects a file that is truncated
+func (t *Tail) restict() error {
 	stat, err := t.file.Stat()
 	if err != nil {
 		return err
@@ -99,7 +118,11 @@ func (t *Tail) tail() error {
 			return err
 		}
 	}
+	return nil
+}
 
+// Read lines until EOF
+func (t *Tail) tail() error {
 	for {
 		line, err := t.reader.ReadString('\n')
 		if err != nil {
@@ -114,7 +137,12 @@ func (t *Tail) tail() error {
 func (t *Tail) eventLoop() error {
 	defer t.file.Close()
 	for {
-		err := t.tail()
+		err := t.restict()
+		if err != nil {
+			return err
+		}
+
+		err = t.tail()
 		if !(err == nil || err == io.EOF) {
 			return err
 		}
