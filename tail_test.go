@@ -45,6 +45,7 @@ func TestTailFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer tail.Close()
 
 	expected := strings.Join(Logs, "")
 	actual, err := recieve(t, tail)
@@ -58,8 +59,6 @@ func TestTailFile(t *testing.T) {
 
 func TestTailReader(t *testing.T) {
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
 
 	go writeWriter(t, writer)
 	tail, err := NewTailReader(reader)
@@ -75,6 +74,10 @@ func TestTailReader(t *testing.T) {
 	if actual != expected {
 		t.Errorf("got %s\nwant %s", actual, expected)
 	}
+
+	reader.Close()
+	writer.Close()
+	tail.Close()
 }
 
 func writeFile(t *testing.T, tmpdir string) error {

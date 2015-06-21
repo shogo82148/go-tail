@@ -28,6 +28,8 @@ type Tail struct {
 	reader   *bufio.Reader
 	watcher  *fsnotify.Watcher
 	buf      string
+	done     chan bool
+	doneFlag bool
 }
 
 // NewTailFile starts tailing a file
@@ -48,6 +50,7 @@ func NewTailFile(filename string) (*Tail, error) {
 		Errors:   make(chan error),
 		filename: filename,
 		watcher:  watcher,
+		done:     make(chan bool),
 	}
 	go t.runFile()
 
@@ -60,9 +63,17 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 		Lines:  make(chan *Line),
 		Errors: make(chan error),
 		reader: bufio.NewReader(reader),
+		done:   make(chan bool),
 	}
 	go t.runReader()
 	return t, nil
+}
+
+func (t *Tail) Close() error {
+	t.doneFlag = true
+	t.done <- true
+	close(t.done)
+	return nil
 }
 
 func (t *Tail) open(seek int) {
@@ -79,7 +90,11 @@ func (t *Tail) open(seek int) {
 
 		// fail. retry...
 		seek = os.SEEK_SET
-		time.Sleep(OpenRetryInterval)
+		select {
+		case <-t.done:
+			return
+		case <-time.After(OpenRetryInterval):
+		}
 	}
 }
 
@@ -87,18 +102,37 @@ func (t *Tail) open(seek int) {
 func (t *Tail) runFile() {
 	t.open(os.SEEK_END)
 	for {
-		if err := t.eventLoop(); err != nil {
+		if err := t.eventLoop(); err != nil && !t.doneFlag {
 			t.Errors <- err
+		}
+		if t.doneFlag {
+			break
 		}
 		t.open(os.SEEK_SET)
 	}
+
+	// Tail is closed. cleanup
+	t.watcher.Remove(t.filename)
+	t.watcher.Close()
+	close(t.Lines)
+	close(t.Errors)
+
+	// flush done chan
+	<-t.done
 }
 
 // runReader tails io.Reader
 func (t *Tail) runReader() {
-	if err := t.tail(); err != nil {
+	if err := t.tail(); err != nil && !t.doneFlag {
 		t.Errors <- err
 	}
+
+	// Tail is closed. cleanup
+	close(t.Lines)
+	close(t.Errors)
+
+	// flush done chan
+	<-t.done
 }
 
 // restrict detects a file that is truncated
@@ -123,7 +157,7 @@ func (t *Tail) restict() error {
 
 // Read lines until EOF
 func (t *Tail) tail() error {
-	for {
+	for !t.doneFlag {
 		line, err := t.reader.ReadString('\n')
 		if err != nil {
 			t.buf += line
@@ -132,6 +166,7 @@ func (t *Tail) tail() error {
 		t.Lines <- &Line{t.buf + line, time.Now()}
 		t.buf = ""
 	}
+	return nil
 }
 
 func (t *Tail) eventLoop() error {
@@ -149,6 +184,8 @@ func (t *Tail) eventLoop() error {
 
 		// wait events
 		select {
+		case <-t.done:
+			return nil
 		case event := <-t.watcher.Events:
 			if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 				// watching file is removed. return for reopening.
