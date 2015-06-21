@@ -30,7 +30,8 @@ type Tail struct {
 	buf      string
 }
 
-func New(filename string) (*Tail, error) {
+// NewTailFile tails a file
+func NewTailFile(filename string) (*Tail, error) {
 	filename, err := filepath.Abs(filename)
 	if err != nil {
 		return nil, err

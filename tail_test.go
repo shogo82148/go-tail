@@ -31,7 +31,7 @@ var Logs = []string{
 	EOFMarker,
 }
 
-func TestTail(t *testing.T) {
+func TestTailFile(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "go-tail.")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -39,7 +39,7 @@ func TestTail(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 
 	go writeFile(tmpdir, t)
-	tail, err := New(filepath.Join(tmpdir, "test.log"))
+	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -2,7 +2,7 @@
 go-tail is an implementation of tail -F
 
 ``` go
-tail, err = tail.New("something.log")
+tail, err = tail.NewTailFile("something.log")
 for {
   select {
   case line := <- tail.Lines:
