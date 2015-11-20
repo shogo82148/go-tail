@@ -2,9 +2,11 @@ package tail
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"gopkg.in/fsnotify.v1"
@@ -13,6 +15,8 @@ import (
 const (
 	OpenRetryInterval = 1 * time.Second
 )
+
+var errDone = errors.New("tail: done event loop")
 
 type Line struct {
 	Text string
@@ -28,8 +32,8 @@ type Tail struct {
 	reader   *bufio.Reader
 	watcher  *fsnotify.Watcher
 	buf      string
-	done     chan bool
-	doneFlag bool
+	done     chan struct{}
+	wg       sync.WaitGroup
 }
 
 // NewTailFile starts tailing a file
@@ -50,10 +54,10 @@ func NewTailFile(filename string) (*Tail, error) {
 		Errors:   make(chan error),
 		filename: filename,
 		watcher:  watcher,
-		done:     make(chan bool),
+		done:     make(chan struct{}, 1),
 	}
+	t.wg.Add(1)
 	go t.runFile()
-
 	return t, nil
 }
 
@@ -63,20 +67,20 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 		Lines:  make(chan *Line),
 		Errors: make(chan error),
 		reader: bufio.NewReader(reader),
-		done:   make(chan bool),
+		done:   make(chan struct{}, 1),
 	}
+	t.wg.Add(1)
 	go t.runReader()
 	return t, nil
 }
 
 func (t *Tail) Close() error {
-	t.doneFlag = true
-	t.done <- true
-	close(t.done)
+	t.done <- struct{}{}
+	t.wg.Wait()
 	return nil
 }
 
-func (t *Tail) open(seek int) {
+func (t *Tail) open(seek int) error {
 	for {
 		fin, err := os.Open(t.filename)
 		if err == nil {
@@ -85,14 +89,14 @@ func (t *Tail) open(seek int) {
 			t.file = fin
 			t.reader = bufio.NewReader(fin)
 			t.watcher.Add(t.filename)
-			return
+			return nil
 		}
 
 		// fail. retry...
 		seek = os.SEEK_SET
 		select {
 		case <-t.done:
-			return
+			return errDone
 		case <-time.After(OpenRetryInterval):
 		}
 	}
@@ -100,39 +104,60 @@ func (t *Tail) open(seek int) {
 
 // runFile tails a file
 func (t *Tail) runFile() {
-	t.open(os.SEEK_END)
-	for {
-		if err := t.eventLoop(); err != nil && !t.doneFlag {
-			t.Errors <- err
-		}
-		if t.doneFlag {
-			break
-		}
-		t.open(os.SEEK_SET)
+	defer func() {
+		// Tail is closed. cleanup
+		t.watcher.Remove(t.filename)
+		t.watcher.Close()
+		close(t.Lines)
+		close(t.Errors)
+		t.wg.Done()
+	}()
+
+	err := t.open(os.SEEK_END)
+	if err == errDone {
+		return
 	}
+	if err != nil {
+		t.Errors <- err
+		return
+	}
+	for {
+		err = t.eventLoop()
+		if err == errDone {
+			return
+		}
+		if err != nil {
+			t.Errors <- err
+			return
+		}
 
-	// Tail is closed. cleanup
-	t.watcher.Remove(t.filename)
-	t.watcher.Close()
-	close(t.Lines)
-	close(t.Errors)
-
-	// flush done chan
-	<-t.done
+		err = t.open(os.SEEK_SET)
+		if err == errDone {
+			return
+		}
+		if err != nil {
+			t.Errors <- err
+			return
+		}
+	}
 }
 
 // runReader tails io.Reader
 func (t *Tail) runReader() {
-	if err := t.tail(); err != nil && !t.doneFlag {
-		t.Errors <- err
+	defer func() {
+		// Tail is closed. cleanup
+		close(t.Lines)
+		close(t.Errors)
+		t.wg.Done()
+	}()
+	err := t.tail()
+	if err == errDone || err == io.EOF || err == io.ErrClosedPipe {
+		return
 	}
-
-	// Tail is closed. cleanup
-	close(t.Lines)
-	close(t.Errors)
-
-	// flush done chan
-	<-t.done
+	if err != nil {
+		t.Errors <- err
+		return
+	}
 }
 
 // restrict detects a file that is truncated
@@ -157,7 +182,12 @@ func (t *Tail) restict() error {
 
 // Read lines until EOF
 func (t *Tail) tail() error {
-	for !t.doneFlag {
+	for {
+		select {
+		case <-t.done:
+			return errDone
+		default:
+		}
 		line, err := t.reader.ReadString('\n')
 		if err != nil {
 			t.buf += line
@@ -185,7 +215,7 @@ func (t *Tail) eventLoop() error {
 		// wait events
 		select {
 		case <-t.done:
-			return nil
+			return errDone
 		case event := <-t.watcher.Events:
 			if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 				// watching file is removed. return for reopening.
