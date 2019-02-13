@@ -9,20 +9,22 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/fsnotify.v1"
+	fsnotify "gopkg.in/fsnotify.v1"
 )
 
 const (
-	OpenRetryInterval = 1 * time.Second
+	openRetryInterval = time.Second
 )
 
 var errDone = errors.New("tail: done event loop")
 
+// Line is a line of the target file.
 type Line struct {
 	Text string
 	Time time.Time
 }
 
+// Tail tails a file.
 type Tail struct {
 	Lines  chan *Line
 	Errors chan error
@@ -74,6 +76,7 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 	return t, nil
 }
 
+// Close stops tailing the file.
 func (t *Tail) Close() error {
 	t.done <- struct{}{}
 	t.wg.Wait()
@@ -97,7 +100,7 @@ func (t *Tail) open(seek int) error {
 		select {
 		case <-t.done:
 			return errDone
-		case <-time.After(OpenRetryInterval):
+		case <-time.After(openRetryInterval):
 		}
 	}
 }
@@ -196,7 +199,6 @@ func (t *Tail) tail() error {
 		t.Lines <- &Line{t.buf + line, time.Now()}
 		t.buf = ""
 	}
-	return nil
 }
 
 func (t *Tail) eventLoop() error {

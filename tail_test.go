@@ -144,5 +144,4 @@ func recieve(t *testing.T, tail *Tail) (string, error) {
 			return "", errors.New("timeout")
 		}
 	}
-	return actual, nil
 }
