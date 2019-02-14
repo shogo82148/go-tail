@@ -82,13 +82,14 @@ func TestTailReader(t *testing.T) {
 }
 
 func writeFile(t *testing.T, tmpdir string) error {
-	time.Sleep(2 * time.Second) // wait for start Tail...
-
 	filename := filepath.Join(tmpdir, "test.log")
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
+
+	// wait for starting to tail...
+	time.Sleep(2 * time.Second)
 
 	for _, line := range Logs {
 		_, err := file.WriteString(line)
@@ -106,7 +107,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 			os.Truncate(filename, 0)
 			file.Seek(int64(0), os.SEEK_SET)
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	file.Close()
@@ -114,8 +115,6 @@ func writeFile(t *testing.T, tmpdir string) error {
 }
 
 func writeWriter(t *testing.T, writer io.Writer) error {
-	time.Sleep(2 * time.Second) // wait for start Tail...
-
 	w := bufio.NewWriter(writer)
 	for _, line := range Logs {
 		_, err := w.WriteString(line)
@@ -124,7 +123,7 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 		}
 		w.Flush()
 		t.Logf("write: %s", line)
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 	return nil
 }
