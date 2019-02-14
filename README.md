@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/shogo82148/go-tail.svg?branch=master)](https://travis-ci.org/shogo82148/go-tail)
+[![GoDoc](https://godoc.org/github.com/shogo82148/go-tail?status.svg)](https://godoc.org/github.com/shogo82148/go-tail)
+
 # go-tail
 go-tail is an implementation of tail -F
 
