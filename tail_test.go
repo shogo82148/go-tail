@@ -3,6 +3,7 @@ package tail
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -81,13 +82,14 @@ func TestTailReader(t *testing.T) {
 }
 
 func writeFile(t *testing.T, tmpdir string) error {
-	time.Sleep(2 * time.Second) // wait for start Tail...
-
 	filename := filepath.Join(tmpdir, "test.log")
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
+
+	// wait for starting to tail...
+	time.Sleep(2 * time.Second)
 
 	for _, line := range Logs {
 		_, err := file.WriteString(line)
@@ -105,7 +107,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 			os.Truncate(filename, 0)
 			file.Seek(int64(0), os.SEEK_SET)
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	file.Close()
@@ -113,8 +115,6 @@ func writeFile(t *testing.T, tmpdir string) error {
 }
 
 func writeWriter(t *testing.T, writer io.Writer) error {
-	time.Sleep(2 * time.Second) // wait for start Tail...
-
 	w := bufio.NewWriter(writer)
 	for _, line := range Logs {
 		_, err := w.WriteString(line)
@@ -123,7 +123,7 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 		}
 		w.Flush()
 		t.Logf("write: %s", line)
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 	return nil
 }
@@ -143,5 +143,68 @@ func recieve(t *testing.T, tail *Tail) (string, error) {
 		case <-time.After(5 * time.Second):
 			return "", errors.New("timeout")
 		}
+	}
+}
+
+func TestTailFile_Rotate(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "go-tail.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	go func() {
+		filename := filepath.Join(tmpdir, "test.log")
+		for i := 0; i < 10; i++ {
+			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if i == 0 {
+				// wait for starting to tail...
+				time.Sleep(2 * time.Second)
+			}
+
+			// start to write logs
+			go writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
+			time.Sleep(time.Second)
+
+			// Rotate log file, and start writing logs into a new file.
+			// While, some logs are still written into the old file.
+			os.Rename(filename, fmt.Sprintf("%s.%d", filename, i))
+		}
+	}()
+
+	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	go func() {
+		time.Sleep(25 * time.Second)
+		tail.Close()
+	}()
+
+	var cnt int
+	for range tail.Lines {
+		cnt++
+	}
+	if cnt != 1000 {
+		t.Errorf("want 1000, got %d", cnt)
+	}
+}
+
+func writeFileAndClose(t *testing.T, file *os.File, line string) {
+	for i := 0; i < 100; i++ {
+		_, err := file.WriteString(line)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		time.Sleep(90 * time.Millisecond)
+	}
+
+	if err := file.Close(); err != nil {
+		t.Error(err)
 	}
 }
