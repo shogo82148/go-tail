@@ -161,6 +161,10 @@ func TestTailFile_Rotate(t *testing.T) {
 				t.Error(err)
 				return
 			}
+			if i == 0 {
+				// wait for starting to tail...
+				time.Sleep(2 * time.Second)
+			}
 
 			// start to write logs
 			go writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
@@ -177,7 +181,7 @@ func TestTailFile_Rotate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	go func() {
-		time.Sleep(21 * time.Second)
+		time.Sleep(25 * time.Second)
 		tail.Close()
 	}()
 

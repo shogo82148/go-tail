@@ -3,9 +3,7 @@ package tail
 import (
 	"bufio"
 	"context"
-	"errors"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,8 +16,6 @@ const (
 	openRetryInterval = time.Second
 	tailOldFileDelay  = 10 * time.Second
 )
-
-var errDone = errors.New("tail: done event loop")
 
 // Line is a line of the target file.
 type Line struct {
@@ -103,6 +99,8 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 func (t *Tail) Close() error {
 	t.cancel()
 	t.wg.Wait()
+	close(t.errors)
+	close(t.lines)
 	return nil
 }
 
@@ -127,17 +125,22 @@ func (t *Tail) open(seek int) (*tail, error) {
 				watcher.Close()
 				return nil, err
 			}
+			ctx, cancel := context.WithCancel(t.ctx)
 			return &tail{
 				parent:  t,
 				file:    file,
 				reader:  bufio.NewReader(file),
 				watcher: watcher,
+				ctx:     ctx,
+				cancel:  cancel,
 			}, nil
 		}
 
 		// fail. retry...
 		seek = os.SEEK_SET
 		select {
+		case <-t.ctx.Done():
+			return nil, t.ctx.Err()
 		case <-time.After(openRetryInterval):
 		}
 	}
@@ -158,32 +161,50 @@ func (t *Tail) runFile(seek int) {
 // runFile tails a file
 func (t *tail) runFile() {
 	defer t.parent.wg.Done()
-	ch := make(chan struct{}, 100)
-	var renamed bool
+	defer t.watcher.Close()
+
+	cherr := make(chan error)
+	ch := make(chan struct{}, 1)
+	defer close(ch)
+
+	t.parent.wg.Add(1)
 	go func() {
+		defer t.parent.wg.Done()
 		for {
 			if err := t.restict(); err != nil {
-				t.parent.errors <- err
-				break
+				select {
+				case cherr <- err:
+				case <-t.ctx.Done():
+				}
+				return
 			}
 			err := t.tail()
 			if err == nil {
 				continue
 			}
-			if err != io.EOF {
-				t.parent.errors <- err
-				break
+
+			// wait for writing new lines.
+			select {
+			case cherr <- err:
+			case <-t.ctx.Done():
+				return
 			}
-			if _, ok := <-ch; !ok {
-				break
+			select {
+			case _, ok := <-ch:
+				if !ok {
+					return
+				}
+			case <-t.ctx.Done():
+				return
 			}
 		}
 	}()
 
+	var renamed bool
+	var waiting bool // waiting for writing new lines?
 	for {
 		select {
 		case event := <-t.watcher.Events:
-			log.Println(event.Name, event.Op)
 			if (event.Op & fsnotify.Remove) != 0 {
 				// the target file is removed, stop tailing.
 				return
@@ -192,6 +213,7 @@ func (t *tail) runFile() {
 				// log rotation is detected.
 				if !renamed {
 					// start to watch creating new file.
+					t.parent.wg.Add(1)
 					go t.parent.runFile(os.SEEK_SET)
 				}
 				name, err := getFileName(t.file)
@@ -202,13 +224,22 @@ func (t *tail) runFile() {
 				t.watcher.Add(name)
 				renamed = true
 			}
-			// notify write event
-			select {
-			case ch <- struct{}{}:
-			default:
+
+			// notify new lines are wrote.
+			if waiting {
+				ch <- struct{}{}
+			}
+		case err := <-cherr:
+			if err == io.EOF {
+				waiting = true
+			} else {
+				t.parent.errors <- err
+				return
 			}
 		case err := <-t.watcher.Errors:
 			t.parent.errors <- err
+			return
+		case <-t.ctx.Done():
 			return
 		}
 	}
@@ -218,7 +249,7 @@ func (t *tail) runFile() {
 func (t *tail) runReader() {
 	defer t.parent.wg.Done()
 	err := t.tail()
-	if err == errDone || err == io.EOF || err == io.ErrClosedPipe {
+	if err == io.EOF || err == io.ErrClosedPipe {
 		return
 	}
 	if err != nil {
@@ -255,7 +286,6 @@ func (t *tail) tail() error {
 			t.buf += line
 			return err
 		}
-		log.Println(t.buf + line)
 		t.parent.lines <- &Line{t.buf + line, time.Now()}
 		t.buf = ""
 	}
