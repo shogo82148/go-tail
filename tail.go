@@ -162,6 +162,7 @@ func (t *Tail) runFile(seek int) {
 func (t *tail) runFile() {
 	defer t.parent.wg.Done()
 	defer t.watcher.Close()
+	defer t.cancel()
 
 	cherr := make(chan error)
 	ch := make(chan struct{}, 1)
@@ -215,6 +216,17 @@ func (t *tail) runFile() {
 					// start to watch creating new file.
 					t.parent.wg.Add(1)
 					go t.parent.runFile(os.SEEK_SET)
+
+					// wait a little, and stop tailing old file.
+					go func() {
+						timer := time.NewTimer(tailOldFileDelay)
+						defer timer.Stop()
+						select {
+						case <-timer.C:
+							t.cancel()
+						case <-t.ctx.Done():
+						}
+					}()
 				}
 				name, err := getFileName(t.file)
 				if err != nil {
@@ -248,6 +260,7 @@ func (t *tail) runFile() {
 // runReader tails io.Reader
 func (t *tail) runReader() {
 	defer t.parent.wg.Done()
+	defer t.cancel()
 	err := t.tail()
 	if err == io.EOF || err == io.ErrClosedPipe {
 		return
