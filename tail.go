@@ -173,7 +173,12 @@ func (t *tail) runFile() {
 					// start to watch creating new file.
 					go t.parent.runFile(os.SEEK_SET)
 				}
-				t.file.Name()
+				name, err := getFileName(t.file)
+				if err != nil {
+					t.parent.errors <- err
+					return
+				}
+				t.watcher.Add(name)
 				renamed = true
 			}
 			// notify write event
