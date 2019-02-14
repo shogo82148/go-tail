@@ -14,7 +14,7 @@ import (
 
 const (
 	openRetryInterval = time.Second
-	tailOldFileDelay  = 10 * time.Second
+	tailOldFileDelay  = 15 * time.Second
 )
 
 // Line is a line of the target file.
