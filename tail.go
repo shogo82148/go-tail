@@ -2,11 +2,13 @@ package tail
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	fsnotify "gopkg.in/fsnotify.v1"
@@ -33,6 +35,9 @@ type Tail struct {
 	lines    chan<- *Line
 	errors   chan<- error
 	filename string
+	wg       sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 type tail struct {
@@ -42,6 +47,8 @@ type tail struct {
 	reader  *bufio.Reader
 	watcher *fsnotify.Watcher
 	buf     string
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // NewTailFile starts tailing a file
@@ -51,6 +58,7 @@ func NewTailFile(filename string) (*Tail, error) {
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	lines := make(chan *Line, 16)
 	errs := make(chan error, 1)
 	parent := &Tail{
@@ -59,13 +67,17 @@ func NewTailFile(filename string) (*Tail, error) {
 		lines:    lines,
 		errors:   errs,
 		filename: filename,
+		ctx:      ctx,
+		cancel:   cancel,
 	}
+	parent.wg.Add(1)
 	go parent.runFile(os.SEEK_END)
 	return parent, nil
 }
 
 // NewTailReader starts tailing io.Reader
 func NewTailReader(reader io.Reader) (*Tail, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 	lines := make(chan *Line, 16)
 	errs := make(chan error, 1)
 	parent := &Tail{
@@ -73,18 +85,24 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 		Errors: errs,
 		lines:  lines,
 		errors: errs,
+		ctx:    ctx,
+		cancel: cancel,
 	}
 	t := &tail{
 		parent: parent,
 		reader: bufio.NewReader(reader),
+		ctx:    ctx,
+		cancel: cancel,
 	}
+	parent.wg.Add(1)
 	go t.runReader()
 	return parent, nil
 }
 
 // Close stops tailing the file.
 func (t *Tail) Close() error {
-	// TODO: stop tailing
+	t.cancel()
+	t.wg.Wait()
 	return nil
 }
 
@@ -127,17 +145,19 @@ func (t *Tail) open(seek int) (*tail, error) {
 
 // runFile tails target files
 func (t *Tail) runFile(seek int) {
+	defer t.wg.Done()
 	child, err := t.open(seek)
 	if err != nil {
 		t.errors <- err
 		return
 	}
+	t.wg.Add(1)
 	go child.runFile()
 }
 
 // runFile tails a file
 func (t *tail) runFile() {
-	defer log.Println(t, "stopped")
+	defer t.parent.wg.Done()
 	ch := make(chan struct{}, 100)
 	var renamed bool
 	go func() {
@@ -159,6 +179,7 @@ func (t *tail) runFile() {
 			}
 		}
 	}()
+
 	for {
 		select {
 		case event := <-t.watcher.Events:
@@ -195,6 +216,7 @@ func (t *tail) runFile() {
 
 // runReader tails io.Reader
 func (t *tail) runReader() {
+	defer t.parent.wg.Done()
 	err := t.tail()
 	if err == errDone || err == io.EOF || err == io.ErrClosedPipe {
 		return
