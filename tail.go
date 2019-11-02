@@ -68,6 +68,7 @@ func NewTailFile(filename string) (*Tail, error) {
 	}
 	parent.wg.Add(1)
 	go parent.runFile(os.SEEK_END)
+	go parent.wait()
 	return parent, nil
 }
 
@@ -92,6 +93,7 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 	}
 	parent.wg.Add(1)
 	go t.runReader()
+	go parent.wait()
 	return parent, nil
 }
 
@@ -99,9 +101,13 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 func (t *Tail) Close() error {
 	t.cancel()
 	t.wg.Wait()
+	return nil
+}
+
+func (t *Tail) wait() {
+	t.wg.Wait()
 	close(t.errors)
 	close(t.lines)
-	return nil
 }
 
 // open opens the target file.

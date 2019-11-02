@@ -78,6 +78,22 @@ func TestTailReader(t *testing.T) {
 
 	reader.Close()
 	writer.Close()
+	select {
+	case _, ok := <-tail.Lines:
+		if ok {
+			t.Error("want closed, but not")
+		}
+	case <-time.After(time.Second):
+		t.Error("want closed, but not")
+	}
+	select {
+	case _, ok := <-tail.Errors:
+		if ok {
+			t.Error("want closed, but not")
+		}
+	case <-time.After(time.Second):
+		t.Error("want closed, but not")
+	}
 	tail.Close()
 }
 
