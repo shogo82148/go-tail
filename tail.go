@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	fsnotify "gopkg.in/fsnotify.v1"
+	fsnotify "github.com/fsnotify/fsnotify"
 )
 
 const (
@@ -172,7 +172,7 @@ func (t *tail) runFile() {
 	go func() {
 		defer t.parent.wg.Done()
 		for {
-			if err := t.restict(); err != nil {
+			if err := t.restrict(); err != nil {
 				select {
 				case cherr <- err:
 				case <-t.ctx.Done():
@@ -272,7 +272,7 @@ func (t *tail) runReader() {
 }
 
 // restrict detects a file that is truncated
-func (t *tail) restict() error {
+func (t *tail) restrict() error {
 	stat, err := t.file.Stat()
 	if err != nil {
 		return err
@@ -282,7 +282,7 @@ func (t *tail) restict() error {
 		return err
 	}
 	if stat.Size() < pos {
-		// file is trancated. seek to head of file.
+		// file is truncated. seek to head of file.
 		_, err := t.file.Seek(0, os.SEEK_SET)
 		if err != nil {
 			return err
