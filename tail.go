@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	fsnotify "gopkg.in/fsnotify.v1"
+	fsnotify "github.com/fsnotify/fsnotify"
 )
 
 const (
