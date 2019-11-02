@@ -49,7 +49,7 @@ func TestTailFile(t *testing.T) {
 	defer tail.Close()
 
 	expected := strings.Join(Logs, "")
-	actual, err := recieve(t, tail)
+	actual, err := receive(t, tail)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestTailReader(t *testing.T) {
 	}
 
 	expected := strings.Join(Logs, "")
-	actual, err := recieve(t, tail)
+	actual, err := receive(t, tail)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -128,12 +128,12 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 	return nil
 }
 
-func recieve(t *testing.T, tail *Tail) (string, error) {
+func receive(t *testing.T, tail *Tail) (string, error) {
 	actual := ""
 	for {
 		select {
 		case line := <-tail.Lines:
-			t.Logf("recieved: %s", line.Text)
+			t.Logf("received: %s", line.Text)
 			actual += line.Text
 			if line.Text == EOFMarker {
 				return actual, nil
