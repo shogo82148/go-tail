@@ -1,12 +1,9 @@
 name: Test
 on:
   push:
-    branches:
-      - master
   pull_request:
 
 jobs:
-
   test:
     name: Test
     runs-on: ${{ matrix.os }}
@@ -14,24 +11,24 @@ jobs:
       fail-fast: false
       matrix:
         os:
-        - ubuntu-latest
-        - macOS-latest
+          - ubuntu-latest
+          - macOS-latest
         go:
-        - '1.13'
-        - '1.14'
-        - '1'
+          - "1.16"
+          - "1.15"
+          - "1.14"
+          - "1.13"
 
     steps:
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go }}
 
-    - name: Set up Go ${{ matrix.go }}
-      uses: actions/setup-go@v1
-      with:
-        go-version: ${{ matrix.go }}
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
 
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v1
-
-    - name: Test
-      run: go test -v -race ./...
-      env:
-        GO111MODULE: "on"
+      - name: Test
+        run: go test -v -race ./...
+        env:
+          GO111MODULE: "on"

@@ -200,6 +200,11 @@ func TestTailFile_Rotate(t *testing.T) {
 		time.Sleep(25 * time.Second)
 		tail.Close()
 	}()
+	go func() {
+		for err := range tail.Errors {
+			t.Log("error: ", err)
+		}
+	}()
 
 	var cnt int
 	for range tail.Lines {
