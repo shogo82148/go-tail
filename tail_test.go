@@ -116,18 +116,31 @@ func writeFile(t *testing.T, tmpdir string) error {
 		t.Logf("write: %s", line)
 		switch line {
 		case RotateMarker:
-			file.Close()
-			os.Rename(filename, filename+".old")
-			file, _ = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			if err := file.Close(); err != nil {
+				return err
+			}
+			if err := os.Rename(filename, filename+".old"); err != nil {
+				return err
+			}
+			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
 		case TruncateMarker:
 			time.Sleep(1 * time.Second)
-			os.Truncate(filename, 0)
-			file.Seek(int64(0), os.SEEK_SET)
+			if _, err := file.Seek(0, os.SEEK_SET); err != nil {
+				return err
+			}
+			if err := os.Truncate(filename, 0); err != nil {
+				return err
+			}
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 
-	file.Close()
+	if err := file.Close(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -138,9 +151,11 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 		if err != nil {
 			return err
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			return err
+		}
 		t.Logf("write: %s", line)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 	return nil
 }
