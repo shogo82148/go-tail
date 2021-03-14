@@ -2,13 +2,13 @@ package tail
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -47,7 +47,7 @@ type tail struct {
 	file    *os.File
 	reader  *bufio.Reader
 	watcher *fsnotify.Watcher
-	buf     strings.Builder
+	buf     bytes.Buffer
 	ctx     context.Context
 	cancel  context.CancelFunc
 }
