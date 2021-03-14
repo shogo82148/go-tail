@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/shogo82148/go-tail.svg?branch=master)](https://travis-ci.org/shogo82148/go-tail)
+[![Test](https://github.com/shogo82148/go-tail/actions/workflows/go.yml/badge.svg)](https://github.com/shogo82148/go-tail/actions/workflows/go.yml)
 [![GoDoc](https://godoc.org/github.com/shogo82148/go-tail?status.svg)](https://godoc.org/github.com/shogo82148/go-tail)
 
 # go-tail
