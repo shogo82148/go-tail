@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,7 +47,7 @@ type tail struct {
 	file    *os.File
 	reader  *bufio.Reader
 	watcher *fsnotify.Watcher
-	buf     string
+	buf     strings.Builder
 	ctx     context.Context
 	cancel  context.CancelFunc
 }
@@ -314,12 +315,17 @@ func (t *tail) restrict() error {
 // tail reads lines until EOF
 func (t *tail) tail() error {
 	for {
-		line, err := t.reader.ReadString('\n')
+		line, err := t.reader.ReadSlice('\n')
+		t.buf.Write(line)
+		if err == bufio.ErrBufferFull {
+			// the reader cannot find EOL in its buffer.
+			// continue to read a line.
+			continue
+		}
 		if err != nil {
-			t.buf += line
 			return fmt.Errorf("tail: failed to read the file: %w", err)
 		}
-		t.parent.lines <- &Line{t.buf + line, time.Now()}
-		t.buf = ""
+		t.parent.lines <- &Line{t.buf.String(), time.Now()}
+		t.buf.Reset()
 	}
 }

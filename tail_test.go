@@ -22,6 +22,7 @@ const (
 
 var Logs = []string{
 	"single line\n",
+	strings.Repeat("very very very long line. ", 4096) + "\n",
 	"multi line 1\nmulti line 2\nmulti line 3\n",
 	"continuous line 1", "continuous line 2", "continuous line 3\n",
 	RotateMarker,
@@ -113,7 +114,11 @@ func writeFile(t *testing.T, tmpdir string) error {
 		if err != nil {
 			return err
 		}
-		t.Logf("write: %s", line)
+		if len(line) < 100 {
+			t.Logf("write: %s", line)
+		} else {
+			t.Logf("write: %s...(snip)", line[:100])
+		}
 		switch line {
 		case RotateMarker:
 			if err := file.Close(); err != nil {
@@ -154,7 +159,11 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 		if err := w.Flush(); err != nil {
 			return err
 		}
-		t.Logf("write: %s", line)
+		if len(line) < 100 {
+			t.Logf("write: %s", line)
+		} else {
+			t.Logf("write: %s...(snip)", line[:100])
+		}
 		time.Sleep(90 * time.Millisecond)
 	}
 	return nil
@@ -165,7 +174,11 @@ func receive(t *testing.T, tail *Tail) (string, error) {
 	for {
 		select {
 		case line := <-tail.Lines:
-			t.Logf("received: %s", line.Text)
+			if len(line.Text) < 100 {
+				t.Logf("received: %s", line.Text)
+			} else {
+				t.Logf("received: %s...(snip)", line.Text[:100])
+			}
 			actual += line.Text
 			if line.Text == EOFMarker {
 				return actual, nil
