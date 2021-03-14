@@ -157,6 +157,10 @@ func (t *Tail) runFile(seek int) {
 	defer t.wg.Done()
 	child, err := t.open(seek)
 	if err != nil {
+		if t.ctx.Err() != nil {
+			// stopping tailing now. suppress the error.
+			return
+		}
 		t.errors <- err
 		return
 	}
