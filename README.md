@@ -1,5 +1,5 @@
 [![Test](https://github.com/shogo82148/go-tail/actions/workflows/go.yml/badge.svg)](https://github.com/shogo82148/go-tail/actions/workflows/go.yml)
-[![GoDoc](https://godoc.org/github.com/shogo82148/go-tail?status.svg)](https://godoc.org/github.com/shogo82148/go-tail)
+[![Go Reference](https://pkg.go.dev/badge/github.com/shogo82148/go-tail.svg)](https://pkg.go.dev/github.com/shogo82148/go-tail)
 
 # go-tail
 go-tail is an implementation of tail -F
