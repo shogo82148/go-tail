@@ -15,6 +15,8 @@ import (
 const (
 	openRetryInterval = time.Second
 	tailOldFileDelay  = 15 * time.Second
+	linesCapacity     = 1024
+	errorsCapacity    = 16
 )
 
 // Line is a line of the target file.
@@ -55,8 +57,8 @@ func NewTailFile(filename string) (*Tail, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	lines := make(chan *Line, 16)
-	errs := make(chan error, 1)
+	lines := make(chan *Line, linesCapacity)
+	errs := make(chan error, errorsCapacity)
 	parent := &Tail{
 		Lines:    lines,
 		Errors:   errs,
@@ -75,8 +77,8 @@ func NewTailFile(filename string) (*Tail, error) {
 // NewTailReader starts tailing io.Reader
 func NewTailReader(reader io.Reader) (*Tail, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	lines := make(chan *Line, 16)
-	errs := make(chan error, 1)
+	lines := make(chan *Line, linesCapacity)
+	errs := make(chan error, errorsCapacity)
 	parent := &Tail{
 		Lines:  lines,
 		Errors: errs,
@@ -174,7 +176,7 @@ func (t *tail) runFile() {
 	defer t.watcher.Close()
 	defer t.cancel()
 
-	cherr := make(chan error)
+	cherr := make(chan error, 1)
 	ch := make(chan struct{}, 1)
 	defer close(ch)
 
@@ -250,6 +252,7 @@ func (t *tail) runFile() {
 			// notify new lines are wrote.
 			if waiting {
 				ch <- struct{}{}
+				waiting = false
 			}
 		case err := <-cherr:
 			if err == io.EOF {
