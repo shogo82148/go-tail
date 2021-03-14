@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -169,7 +170,10 @@ func TestTailFile_Rotate(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdir)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		filename := filepath.Join(tmpdir, "test.log")
 		for i := 0; i < 10; i++ {
 			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
@@ -183,7 +187,11 @@ func TestTailFile_Rotate(t *testing.T) {
 			}
 
 			// start to write logs
-			go writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
+			}()
 			time.Sleep(time.Second)
 
 			// Rotate log file, and start writing logs into a new file.
@@ -197,7 +205,7 @@ func TestTailFile_Rotate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	go func() {
-		time.Sleep(25 * time.Second)
+		wg.Wait()
 		tail.Close()
 	}()
 	go func() {
@@ -219,6 +227,7 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 	for i := 0; i < 100; i++ {
 		_, err := file.WriteString(line)
 		if err != nil {
+			_ = file.Close()
 			t.Error(err)
 			return
 		}
