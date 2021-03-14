@@ -191,6 +191,7 @@ func TestTailFile_Rotate(t *testing.T) {
 		defer wg.Done()
 		filename := filepath.Join(tmpdir, "test.log")
 		for i := 0; i < 10; i++ {
+			i := i
 			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				t.Error(err)
