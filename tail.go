@@ -176,7 +176,7 @@ func (t *tail) runFile() {
 	defer t.watcher.Close()
 	defer t.cancel()
 
-	cherr := make(chan error)
+	cherr := make(chan error, 1)
 	ch := make(chan struct{}, 1)
 	defer close(ch)
 
@@ -252,6 +252,7 @@ func (t *tail) runFile() {
 			// notify new lines are wrote.
 			if waiting {
 				ch <- struct{}{}
+				waiting = false
 			}
 		case err := <-cherr:
 			if err == io.EOF {
