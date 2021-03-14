@@ -34,6 +34,7 @@ jobs:
           GO111MODULE: "on"
 
       - name: Send coverage
+        if: always()
         uses: shogo82148/actions-goveralls@v1
         with:
           path-to-profile: profile.cov
@@ -42,6 +43,7 @@ jobs:
 
   # notifies that all test jobs are finished.
   finish:
+    if: always()
     needs: test
     runs-on: ubuntu-latest
     steps:

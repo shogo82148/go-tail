@@ -3,6 +3,8 @@ package tail
 import (
 	"bufio"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -53,7 +55,7 @@ type tail struct {
 func NewTailFile(filename string) (*Tail, error) {
 	filename, err := filepath.Abs(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tail: failed to get the absolute path: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -117,7 +119,7 @@ func (t *Tail) wait() {
 func (t *Tail) open(seek int) (*tail, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tail: failed to initialize fsnotify: %w", err)
 	}
 	for {
 		file, err := os.Open(t.filename)
@@ -126,12 +128,12 @@ func (t *Tail) open(seek int) (*tail, error) {
 			if _, err := file.Seek(0, seek); err != nil {
 				file.Close()
 				watcher.Close()
-				return nil, err
+				return nil, fmt.Errorf("tail: failed to seek: %w", err)
 			}
 			if err := watcher.Add(t.filename); err != nil {
 				file.Close()
 				watcher.Close()
-				return nil, err
+				return nil, fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
 			}
 			ctx, cancel := context.WithCancel(t.ctx)
 			return &tail{
@@ -146,10 +148,12 @@ func (t *Tail) open(seek int) (*tail, error) {
 
 		// fail. retry...
 		seek = os.SEEK_SET
+		timer := time.NewTimer(openRetryInterval)
 		select {
 		case <-t.ctx.Done():
+			timer.Stop()
 			return nil, t.ctx.Err()
-		case <-time.After(openRetryInterval):
+		case <-timer.C:
 		}
 	}
 }
@@ -245,7 +249,10 @@ func (t *tail) runFile() {
 					t.parent.errors <- err
 					return
 				}
-				t.watcher.Add(name)
+				if err := t.watcher.Add(name); err != nil {
+					t.parent.errors <- fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
+					return
+				}
 				renamed = true
 			}
 
@@ -255,7 +262,7 @@ func (t *tail) runFile() {
 				waiting = false
 			}
 		case err := <-cherr:
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				waiting = true
 			} else {
 				t.parent.errors <- err
@@ -275,7 +282,7 @@ func (t *tail) runReader() {
 	defer t.parent.wg.Done()
 	defer t.cancel()
 	err := t.tail()
-	if err == io.EOF || err == io.ErrClosedPipe {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
 		return
 	}
 	if err != nil {
@@ -288,17 +295,17 @@ func (t *tail) runReader() {
 func (t *tail) restrict() error {
 	stat, err := t.file.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("tail: failed to stat the file: %w", err)
 	}
 	pos, err := t.file.Seek(0, os.SEEK_CUR)
 	if err != nil {
-		return err
+		return fmt.Errorf("tail: failed to seek: %w", err)
 	}
 	if stat.Size() < pos {
 		// file is truncated. seek to head of file.
 		_, err := t.file.Seek(0, os.SEEK_SET)
 		if err != nil {
-			return err
+			return fmt.Errorf("tail: failed to seek: %w", err)
 		}
 	}
 	return nil
@@ -310,7 +317,7 @@ func (t *tail) tail() error {
 		line, err := t.reader.ReadString('\n')
 		if err != nil {
 			t.buf += line
-			return err
+			return fmt.Errorf("tail: failed to read the file: %w", err)
 		}
 		t.parent.lines <- &Line{t.buf + line, time.Now()}
 		t.buf = ""
