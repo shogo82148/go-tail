@@ -212,7 +212,9 @@ func TestTailFile_Rotate(t *testing.T) {
 
 			// Rotate log file, and start writing logs into a new file.
 			// While, some logs are still written into the old file.
-			os.Rename(filename, fmt.Sprintf("%s.%d", filename, i))
+			if err := os.Rename(filename, fmt.Sprintf("%s.%d", filename, i)); err != nil {
+				t.Error("failed to rename", err)
+			}
 		}
 	}()
 
