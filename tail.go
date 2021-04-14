@@ -90,9 +90,13 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+	r := ctxReader{
+		ctx: ctx,
+		r:   reader,
+	}
 	t := &tail{
 		parent: parent,
-		reader: bufio.NewReader(reader),
+		reader: bufio.NewReader(r),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -137,10 +141,14 @@ func (t *Tail) open(seek int) (*tail, error) {
 				return nil, fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
 			}
 			ctx, cancel := context.WithCancel(t.ctx)
+			r := ctxReader{
+				ctx: ctx,
+				r:   file,
+			}
 			return &tail{
 				parent:  t,
 				file:    file,
-				reader:  bufio.NewReader(file),
+				reader:  bufio.NewReader(r),
 				watcher: watcher,
 				ctx:     ctx,
 				cancel:  cancel,
@@ -284,6 +292,10 @@ func (t *tail) runReader() {
 	defer t.cancel()
 	err := t.tail()
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
+		return
+	}
+	if t.ctx.Err() != nil {
+		// stopping tailing now. suppress the error.
 		return
 	}
 	if err != nil {

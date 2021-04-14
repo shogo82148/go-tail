@@ -99,6 +99,25 @@ func TestTailReader(t *testing.T) {
 	tail.Close()
 }
 
+func TestTailReader_Close(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+
+	tail, err := NewTailReader(reader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := tail.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, ok := <-tail.Lines
+	if ok {
+		t.Error("want closed, but open")
+	}
+}
+
 func writeFile(t *testing.T, tmpdir string) error {
 	filename := filepath.Join(tmpdir, "test.log")
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
