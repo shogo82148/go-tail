@@ -152,7 +152,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 			}
 		case TruncateMarker:
 			time.Sleep(1 * time.Second)
-			if _, err := file.Seek(0, os.SEEK_SET); err != nil {
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
 				return err
 			}
 			if err := os.Truncate(filename, 0); err != nil {

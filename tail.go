@@ -156,7 +156,7 @@ func (t *Tail) open(seek int) (*tail, error) {
 		}
 
 		// fail. retry...
-		seek = os.SEEK_SET
+		seek = io.SeekStart
 		timer := time.NewTimer(openRetryInterval)
 		select {
 		case <-t.ctx.Done():
@@ -240,7 +240,7 @@ func (t *tail) runFile() {
 				if !renamed {
 					// start to watch creating new file.
 					t.parent.wg.Add(1)
-					go t.parent.runFile(os.SEEK_SET)
+					go t.parent.runFile(io.SeekStart)
 
 					// wait a little, and stop tailing old file.
 					go func() {
@@ -310,13 +310,13 @@ func (t *tail) restrict() error {
 	if err != nil {
 		return fmt.Errorf("tail: failed to stat the file: %w", err)
 	}
-	pos, err := t.file.Seek(0, os.SEEK_CUR)
+	pos, err := t.file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return fmt.Errorf("tail: failed to seek: %w", err)
 	}
 	if stat.Size() < pos {
 		// file is truncated. seek to head of file.
-		_, err := t.file.Seek(0, os.SEEK_SET)
+		_, err := t.file.Seek(0, io.SeekStart)
 		if err != nil {
 			return fmt.Errorf("tail: failed to seek: %w", err)
 		}
