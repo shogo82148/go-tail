@@ -1,3 +1,4 @@
+//go:build dragonfly || freebsd || linux || netbsd || openbsd
 // +build dragonfly freebsd linux netbsd openbsd
 
 package tail
