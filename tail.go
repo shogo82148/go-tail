@@ -271,10 +271,10 @@ func (t *tail) runFile() {
 		case err := <-cherr:
 			if errors.Is(err, io.EOF) {
 				waiting = true
-			} else {
+				continue
+			}
 			t.parent.errors <- err
 			return
-			}
 		case err := <-t.watcher.Errors:
 			t.parent.errors <- err
 			return
