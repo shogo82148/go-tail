@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -56,7 +55,7 @@ type tail struct {
 func NewTailFile(filename string) (*Tail, error) {
 	filename, err := filepath.Abs(filename)
 	if err != nil {
-		return nil, fmt.Errorf("tail: failed to get the absolute path: %w", err)
+		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,9 +70,14 @@ func NewTailFile(filename string) (*Tail, error) {
 		ctx:      ctx,
 		cancel:   cancel,
 	}
+
 	parent.wg.Add(1)
-	go parent.runFile(os.SEEK_END)
+	go func() {
+		defer parent.wg.Done()
+		parent.runFile(os.SEEK_END)
+	}()
 	go parent.wait()
+
 	return parent, nil
 }
 
@@ -100,9 +104,14 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+
 	parent.wg.Add(1)
-	go t.runReader()
+	go func() {
+		defer parent.wg.Done()
+		t.runReader()
+	}()
 	go parent.wait()
+
 	return parent, nil
 }
 
@@ -124,7 +133,7 @@ func (t *Tail) wait() {
 func (t *Tail) open(seek int) (*tail, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, fmt.Errorf("tail: failed to initialize fsnotify: %w", err)
+		return nil, err
 	}
 	for {
 		file, err := os.Open(t.filename)
@@ -133,12 +142,12 @@ func (t *Tail) open(seek int) (*tail, error) {
 			if _, err := file.Seek(0, seek); err != nil {
 				file.Close()
 				watcher.Close()
-				return nil, fmt.Errorf("tail: failed to seek: %w", err)
+				return nil, err
 			}
 			if err := watcher.Add(t.filename); err != nil {
 				file.Close()
 				watcher.Close()
-				return nil, fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
+				return nil, err
 			}
 			ctx, cancel := context.WithCancel(t.ctx)
 			r := ctxReader{
@@ -169,23 +178,23 @@ func (t *Tail) open(seek int) (*tail, error) {
 
 // runFile tails target files
 func (t *Tail) runFile(seek int) {
-	defer t.wg.Done()
 	child, err := t.open(seek)
 	if err != nil {
-		if t.ctx.Err() != nil {
-			// stopping tailing now. suppress the error.
-			return
+		if !errors.Is(err, context.Canceled) {
+			t.errors <- err
 		}
-		t.errors <- err
 		return
 	}
+
 	t.wg.Add(1)
-	go child.runFile()
+	go func() {
+		defer t.wg.Done()
+		child.runFile()
+	}()
 }
 
 // runFile tails a file
 func (t *tail) runFile() {
-	defer t.parent.wg.Done()
 	defer t.watcher.Close()
 	defer t.cancel()
 
@@ -240,7 +249,10 @@ func (t *tail) runFile() {
 				if !renamed {
 					// start to watch creating new file.
 					t.parent.wg.Add(1)
-					go t.parent.runFile(io.SeekStart)
+					go func() {
+						defer t.parent.wg.Done()
+						t.parent.runFile(io.SeekStart)
+					}()
 
 					// wait a little, and stop tailing old file.
 					go func() {
@@ -259,7 +271,7 @@ func (t *tail) runFile() {
 					return
 				}
 				if err := t.watcher.Add(name); err != nil {
-					t.parent.errors <- fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
+					t.parent.errors <- err
 					return
 				}
 				renamed = true
@@ -273,10 +285,10 @@ func (t *tail) runFile() {
 		case err := <-cherr:
 			if errors.Is(err, io.EOF) {
 				waiting = true
-			} else {
-				t.parent.errors <- err
-				return
+				continue
 			}
+			t.parent.errors <- err
+			return
 		case err := <-t.watcher.Errors:
 			t.parent.errors <- err
 			return
@@ -288,18 +300,15 @@ func (t *tail) runFile() {
 
 // runReader tails io.Reader
 func (t *tail) runReader() {
-	defer t.parent.wg.Done()
 	defer t.cancel()
 	err := t.tail()
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
 		return
 	}
-	if t.ctx.Err() != nil {
-		// stopping tailing now. suppress the error.
-		return
-	}
 	if err != nil {
-		t.parent.errors <- err
+		if !errors.Is(err, context.Canceled) {
+			t.parent.errors <- err
+		}
 		return
 	}
 }
@@ -308,17 +317,17 @@ func (t *tail) runReader() {
 func (t *tail) restrict() error {
 	stat, err := t.file.Stat()
 	if err != nil {
-		return fmt.Errorf("tail: failed to stat the file: %w", err)
+		return err
 	}
 	pos, err := t.file.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return fmt.Errorf("tail: failed to seek: %w", err)
+		return err
 	}
 	if stat.Size() < pos {
 		// file is truncated. seek to head of file.
 		_, err := t.file.Seek(0, io.SeekStart)
 		if err != nil {
-			return fmt.Errorf("tail: failed to seek: %w", err)
+			return err
 		}
 	}
 	return nil
@@ -335,7 +344,7 @@ func (t *tail) tail() error {
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("tail: failed to read the file: %w", err)
+			return err
 		}
 		t.parent.lines <- &Line{t.buf.String(), time.Now()}
 		t.buf.Reset()

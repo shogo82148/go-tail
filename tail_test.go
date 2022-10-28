@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,11 +36,8 @@ var Logs = []string{
 }
 
 func TestTailFile(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", "go-tail.")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer os.RemoveAll(tmpdir)
+	t.Parallel()
+	tmpdir := t.TempDir()
 
 	go writeFile(t, tmpdir)
 	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
@@ -61,6 +57,7 @@ func TestTailFile(t *testing.T) {
 }
 
 func TestTailReader(t *testing.T) {
+	t.Parallel()
 	reader, writer := io.Pipe()
 
 	go writeWriter(t, writer)
@@ -85,7 +82,7 @@ func TestTailReader(t *testing.T) {
 		if ok {
 			t.Error("want closed, but not")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("want closed, but not")
 	}
 	select {
@@ -93,13 +90,14 @@ func TestTailReader(t *testing.T) {
 		if ok {
 			t.Error("want closed, but not")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("want closed, but not")
 	}
 	tail.Close()
 }
 
 func TestTailReader_Close(t *testing.T) {
+	t.Parallel()
 	reader, writer := io.Pipe()
 	defer reader.Close()
 	defer writer.Close()
@@ -120,13 +118,13 @@ func TestTailReader_Close(t *testing.T) {
 
 func writeFile(t *testing.T, tmpdir string) error {
 	filename := filepath.Join(tmpdir, "test.log")
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 
 	// wait for starting to tail...
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	for _, line := range Logs {
 		_, err := file.WriteString(line)
@@ -146,12 +144,12 @@ func writeFile(t *testing.T, tmpdir string) error {
 			if err := os.Rename(filename, filename+".old"); err != nil {
 				return err
 			}
-			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 			if err != nil {
 				return err
 			}
 		case TruncateMarker:
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 			if _, err := file.Seek(0, io.SeekStart); err != nil {
 				return err
 			}
@@ -159,7 +157,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 				return err
 			}
 		}
-		time.Sleep(90 * time.Millisecond)
+		time.Sleep(9 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
@@ -183,7 +181,7 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 		} else {
 			t.Logf("write: %s...(snip)", line[:100])
 		}
-		time.Sleep(90 * time.Millisecond)
+		time.Sleep(9 * time.Millisecond)
 	}
 	return nil
 }
@@ -204,34 +202,32 @@ func receive(t *testing.T, tail *Tail) (string, error) {
 			}
 		case err := <-tail.Errors:
 			return "", err
-		case <-time.After(5 * time.Second):
+		case <-time.After(500 * time.Millisecond):
 			return "", errors.New("timeout")
 		}
 	}
 }
 
 func TestTailFile_Rotate(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", "go-tail.")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer os.RemoveAll(tmpdir)
+	t.Parallel()
+	tmpdir := t.TempDir()
 
 	var wg sync.WaitGroup
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		filename := filepath.Join(tmpdir, "test.log")
 		for i := 0; i < 10; i++ {
 			i := i
-			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 			if err != nil {
 				t.Error(err)
 				return
 			}
 			if i == 0 {
 				// wait for starting to tail...
-				time.Sleep(2 * time.Second)
+				time.Sleep(200 * time.Millisecond)
 			}
 
 			// start to write logs
@@ -240,7 +236,7 @@ func TestTailFile_Rotate(t *testing.T) {
 				defer wg.Done()
 				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
 			}()
-			time.Sleep(time.Second)
+			time.Sleep(100 * time.Millisecond)
 
 			// Rotate log file, and start writing logs into a new file.
 			// While, some logs are still written into the old file.
@@ -281,7 +277,7 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 			t.Error(err)
 			return
 		}
-		time.Sleep(90 * time.Millisecond)
+		time.Sleep(9 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
