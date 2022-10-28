@@ -82,7 +82,7 @@ func TestTailReader(t *testing.T) {
 		if ok {
 			t.Error("want closed, but not")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("want closed, but not")
 	}
 	select {
@@ -90,7 +90,7 @@ func TestTailReader(t *testing.T) {
 		if ok {
 			t.Error("want closed, but not")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("want closed, but not")
 	}
 	tail.Close()
@@ -124,7 +124,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 	}
 
 	// wait for starting to tail...
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	for _, line := range Logs {
 		_, err := file.WriteString(line)
@@ -149,7 +149,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 				return err
 			}
 		case TruncateMarker:
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 			if _, err := file.Seek(0, io.SeekStart); err != nil {
 				return err
 			}
@@ -157,7 +157,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 				return err
 			}
 		}
-		time.Sleep(90 * time.Millisecond)
+		time.Sleep(9 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
@@ -181,7 +181,7 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 		} else {
 			t.Logf("write: %s...(snip)", line[:100])
 		}
-		time.Sleep(90 * time.Millisecond)
+		time.Sleep(9 * time.Millisecond)
 	}
 	return nil
 }
@@ -202,7 +202,7 @@ func receive(t *testing.T, tail *Tail) (string, error) {
 			}
 		case err := <-tail.Errors:
 			return "", err
-		case <-time.After(5 * time.Second):
+		case <-time.After(500 * time.Millisecond):
 			return "", errors.New("timeout")
 		}
 	}
@@ -226,7 +226,7 @@ func TestTailFile_Rotate(t *testing.T) {
 			}
 			if i == 0 {
 				// wait for starting to tail...
-				time.Sleep(2 * time.Second)
+				time.Sleep(200 * time.Millisecond)
 			}
 
 			// start to write logs
@@ -235,7 +235,7 @@ func TestTailFile_Rotate(t *testing.T) {
 				defer wg.Done()
 				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
 			}()
-			time.Sleep(time.Second)
+			time.Sleep(100 * time.Millisecond)
 
 			// Rotate log file, and start writing logs into a new file.
 			// While, some logs are still written into the old file.
@@ -276,7 +276,7 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 			t.Error(err)
 			return
 		}
-		time.Sleep(90 * time.Millisecond)
+		time.Sleep(9 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
