@@ -172,11 +172,9 @@ func (t *Tail) runFile(seek int) {
 	defer t.wg.Done()
 	child, err := t.open(seek)
 	if err != nil {
-		if t.ctx.Err() != nil {
-			// stopping tailing now. suppress the error.
-			return
+		if !errors.Is(err, context.Canceled) {
+			t.errors <- err
 		}
-		t.errors <- err
 		return
 	}
 	t.wg.Add(1)
@@ -274,8 +272,8 @@ func (t *tail) runFile() {
 			if errors.Is(err, io.EOF) {
 				waiting = true
 			} else {
-				t.parent.errors <- err
-				return
+			t.parent.errors <- err
+			return
 			}
 		case err := <-t.watcher.Errors:
 			t.parent.errors <- err
@@ -294,12 +292,10 @@ func (t *tail) runReader() {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
 		return
 	}
-	if t.ctx.Err() != nil {
-		// stopping tailing now. suppress the error.
-		return
-	}
 	if err != nil {
-		t.parent.errors <- err
+		if !errors.Is(err, context.Canceled) {
+			t.parent.errors <- err
+		}
 		return
 	}
 }
