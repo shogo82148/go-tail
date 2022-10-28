@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -56,7 +55,7 @@ type tail struct {
 func NewTailFile(filename string) (*Tail, error) {
 	filename, err := filepath.Abs(filename)
 	if err != nil {
-		return nil, fmt.Errorf("tail: failed to get the absolute path: %w", err)
+		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -134,7 +133,7 @@ func (t *Tail) wait() {
 func (t *Tail) open(seek int) (*tail, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, fmt.Errorf("tail: failed to initialize fsnotify: %w", err)
+		return nil, err
 	}
 	for {
 		file, err := os.Open(t.filename)
@@ -143,12 +142,12 @@ func (t *Tail) open(seek int) (*tail, error) {
 			if _, err := file.Seek(0, seek); err != nil {
 				file.Close()
 				watcher.Close()
-				return nil, fmt.Errorf("tail: failed to seek: %w", err)
+				return nil, err
 			}
 			if err := watcher.Add(t.filename); err != nil {
 				file.Close()
 				watcher.Close()
-				return nil, fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
+				return nil, err
 			}
 			ctx, cancel := context.WithCancel(t.ctx)
 			r := ctxReader{
@@ -272,7 +271,7 @@ func (t *tail) runFile() {
 					return
 				}
 				if err := t.watcher.Add(name); err != nil {
-					t.parent.errors <- fmt.Errorf("tail: failed to watch fsnotify event: %w", err)
+					t.parent.errors <- err
 					return
 				}
 				renamed = true
@@ -318,17 +317,17 @@ func (t *tail) runReader() {
 func (t *tail) restrict() error {
 	stat, err := t.file.Stat()
 	if err != nil {
-		return fmt.Errorf("tail: failed to stat the file: %w", err)
+		return err
 	}
 	pos, err := t.file.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return fmt.Errorf("tail: failed to seek: %w", err)
+		return err
 	}
 	if stat.Size() < pos {
 		// file is truncated. seek to head of file.
 		_, err := t.file.Seek(0, io.SeekStart)
 		if err != nil {
-			return fmt.Errorf("tail: failed to seek: %w", err)
+			return err
 		}
 	}
 	return nil
@@ -345,7 +344,7 @@ func (t *tail) tail() error {
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("tail: failed to read the file: %w", err)
+			return err
 		}
 		t.parent.lines <- &Line{t.buf.String(), time.Now()}
 		t.buf.Reset()

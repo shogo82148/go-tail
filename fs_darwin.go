@@ -34,7 +34,7 @@ func getFileName(f *os.File) (string, error) {
 
 	idx := bytes.IndexByte(buf[:], 0)
 	if idx < 0 {
-		return "", fmt.Errorf("tail: fail to get path of fd: %d", fd)
+		return "", fmt.Errorf("getting path of file descriptor %d", fd)
 	}
 	return string(buf[:idx]), nil
 }
