@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,11 +36,8 @@ var Logs = []string{
 }
 
 func TestTailFile(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", "go-tail.")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer os.RemoveAll(tmpdir)
+	t.Parallel()
+	tmpdir := t.TempDir()
 
 	go writeFile(t, tmpdir)
 	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
@@ -61,6 +57,7 @@ func TestTailFile(t *testing.T) {
 }
 
 func TestTailReader(t *testing.T) {
+	t.Parallel()
 	reader, writer := io.Pipe()
 
 	go writeWriter(t, writer)
@@ -100,6 +97,7 @@ func TestTailReader(t *testing.T) {
 }
 
 func TestTailReader_Close(t *testing.T) {
+	t.Parallel()
 	reader, writer := io.Pipe()
 	defer reader.Close()
 	defer writer.Close()
@@ -120,7 +118,7 @@ func TestTailReader_Close(t *testing.T) {
 
 func writeFile(t *testing.T, tmpdir string) error {
 	filename := filepath.Join(tmpdir, "test.log")
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
@@ -146,7 +144,7 @@ func writeFile(t *testing.T, tmpdir string) error {
 			if err := os.Rename(filename, filename+".old"); err != nil {
 				return err
 			}
-			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 			if err != nil {
 				return err
 			}
@@ -211,11 +209,8 @@ func receive(t *testing.T, tail *Tail) (string, error) {
 }
 
 func TestTailFile_Rotate(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", "go-tail.")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer os.RemoveAll(tmpdir)
+	t.Parallel()
+	tmpdir := t.TempDir()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -224,7 +219,7 @@ func TestTailFile_Rotate(t *testing.T) {
 		filename := filepath.Join(tmpdir, "test.log")
 		for i := 0; i < 10; i++ {
 			i := i
-			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 			if err != nil {
 				t.Error(err)
 				return
