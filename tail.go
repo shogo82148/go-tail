@@ -71,9 +71,14 @@ func NewTailFile(filename string) (*Tail, error) {
 		ctx:      ctx,
 		cancel:   cancel,
 	}
+
 	parent.wg.Add(1)
-	go parent.runFile(os.SEEK_END)
+	go func() {
+		defer parent.wg.Done()
+		parent.runFile(os.SEEK_END)
+	}()
 	go parent.wait()
+
 	return parent, nil
 }
 
@@ -100,9 +105,14 @@ func NewTailReader(reader io.Reader) (*Tail, error) {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+
 	parent.wg.Add(1)
-	go t.runReader()
+	go func() {
+		defer parent.wg.Done()
+		t.runReader()
+	}()
 	go parent.wait()
+
 	return parent, nil
 }
 
@@ -169,7 +179,6 @@ func (t *Tail) open(seek int) (*tail, error) {
 
 // runFile tails target files
 func (t *Tail) runFile(seek int) {
-	defer t.wg.Done()
 	child, err := t.open(seek)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
@@ -177,13 +186,16 @@ func (t *Tail) runFile(seek int) {
 		}
 		return
 	}
+
 	t.wg.Add(1)
-	go child.runFile()
+	go func() {
+		defer t.wg.Done()
+		child.runFile()
+	}()
 }
 
 // runFile tails a file
 func (t *tail) runFile() {
-	defer t.parent.wg.Done()
 	defer t.watcher.Close()
 	defer t.cancel()
 
@@ -238,7 +250,10 @@ func (t *tail) runFile() {
 				if !renamed {
 					// start to watch creating new file.
 					t.parent.wg.Add(1)
-					go t.parent.runFile(io.SeekStart)
+					go func() {
+						defer t.parent.wg.Done()
+						t.parent.runFile(io.SeekStart)
+					}()
 
 					// wait a little, and stop tailing old file.
 					go func() {
@@ -286,7 +301,6 @@ func (t *tail) runFile() {
 
 // runReader tails io.Reader
 func (t *tail) runReader() {
-	defer t.parent.wg.Done()
 	defer t.cancel()
 	err := t.tail()
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
