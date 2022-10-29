@@ -29,12 +29,12 @@ func getFileName(f *os.File) (string, error) {
 		}
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("tail: getting path of file descriptor %d: %w", fd, err)
 	}
 
 	idx := bytes.IndexByte(buf[:], 0)
 	if idx < 0 {
-		return "", fmt.Errorf("getting path of file descriptor %d", fd)
+		return "", fmt.Errorf("tail: getting path of file descriptor %d", fd)
 	}
 	return string(buf[:idx]), nil
 }
