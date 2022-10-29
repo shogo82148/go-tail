@@ -13,7 +13,7 @@ func getFileName(f *os.File) (string, error) {
 	fd := f.Fd()
 	name, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), fd))
 	if err != nil {
-		return "", fmt.Errorf("getting path of file descriptor %d: %w", fd, err)
+		return "", fmt.Errorf("tail: getting path of file descriptor %d: %w", fd, err)
 	}
 	return name, nil
 }
