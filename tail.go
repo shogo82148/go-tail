@@ -240,11 +240,11 @@ func (t *tail) runFile() {
 	for {
 		select {
 		case event := <-t.watcher.Events:
-			if (event.Op & fsnotify.Remove) != 0 {
+			if event.Op.Has(fsnotify.Remove) {
 				// the target file is removed, stop tailing.
 				return
 			}
-			if (event.Op & fsnotify.Rename) != 0 {
+			if event.Op.Has(fsnotify.Rename) {
 				// log rotation is detected.
 				if !renamed {
 					// start to watch creating new file.
