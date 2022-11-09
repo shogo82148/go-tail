@@ -292,3 +292,29 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 		t.Error(err)
 	}
 }
+
+func TestLineLimit(t *testing.T) {
+	t.Parallel()
+	reader, writer := io.Pipe()
+
+	go func() {
+		defer writer.Close()
+		for i := 0; i < 1024*1024; i++ {
+			writer.Write([]byte{'a'})
+		}
+	}()
+	tail, err := NewTailReaderWithOptions(reader, Options{
+		MaxBytesLine: 1024,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer reader.Close()
+	defer tail.Close()
+
+	for line := range tail.Lines {
+		if len(line.Text) != 1024 {
+			t.Errorf("unexpected length: %d", len(line.Text))
+		}
+	}
+}
