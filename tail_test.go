@@ -38,9 +38,15 @@ var Logs = []string{
 func TestTailFile(t *testing.T) {
 	t.Parallel()
 	tmpdir := t.TempDir()
+	filename := filepath.Join(tmpdir, "test.log")
 
-	go writeFile(t, tmpdir)
-	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go writeFile(t, filename, file)
+
+	tail, err := NewTailFile(filename)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,6 +60,52 @@ func TestTailFile(t *testing.T) {
 	if actual != expected {
 		t.Errorf("got %s\nwant %s", actual, expected)
 	}
+}
+
+func writeFile(t *testing.T, filename string, file *os.File) error {
+	defer file.Close()
+
+	// wait for starting to tail...
+	time.Sleep(100 * time.Millisecond)
+
+	for _, line := range Logs {
+		_, err := file.WriteString(line)
+		if err != nil {
+			return err
+		}
+		if len(line) < 100 {
+			t.Logf("write: %s", line)
+		} else {
+			t.Logf("write: %s...(snip)", line[:100])
+		}
+		switch line {
+		case RotateMarker:
+			if err := file.Close(); err != nil {
+				return err
+			}
+			if err := os.Rename(filename, filename+".old"); err != nil {
+				return err
+			}
+			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
+			if err != nil {
+				return err
+			}
+		case TruncateMarker:
+			time.Sleep(1 * time.Second)
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return err
+			}
+			if err := os.Truncate(filename, 0); err != nil {
+				return err
+			}
+		}
+		time.Sleep(9 * time.Millisecond)
+	}
+
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func TestTailReader(t *testing.T) {
@@ -116,56 +168,6 @@ func TestTailReader_Close(t *testing.T) {
 	}
 }
 
-func writeFile(t *testing.T, tmpdir string) error {
-	filename := filepath.Join(tmpdir, "test.log")
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-
-	// wait for starting to tail...
-	time.Sleep(200 * time.Millisecond)
-
-	for _, line := range Logs {
-		_, err := file.WriteString(line)
-		if err != nil {
-			return err
-		}
-		if len(line) < 100 {
-			t.Logf("write: %s", line)
-		} else {
-			t.Logf("write: %s...(snip)", line[:100])
-		}
-		switch line {
-		case RotateMarker:
-			if err := file.Close(); err != nil {
-				return err
-			}
-			if err := os.Rename(filename, filename+".old"); err != nil {
-				return err
-			}
-			file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
-			if err != nil {
-				return err
-			}
-		case TruncateMarker:
-			time.Sleep(100 * time.Millisecond)
-			if _, err := file.Seek(0, io.SeekStart); err != nil {
-				return err
-			}
-			if err := os.Truncate(filename, 0); err != nil {
-				return err
-			}
-		}
-		time.Sleep(9 * time.Millisecond)
-	}
-
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
 func writeWriter(t *testing.T, writer io.Writer) error {
 	w := bufio.NewWriter(writer)
 	for _, line := range Logs {
@@ -187,8 +189,14 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 }
 
 func receive(t *testing.T, tail *Tail) (string, error) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 	actual := ""
 	for {
+		if !timer.Stop() {
+			<-timer.C
+		}
+		timer.Reset(5 * time.Second)
 		select {
 		case line := <-tail.Lines:
 			if len(line.Text) < 100 {
@@ -202,7 +210,7 @@ func receive(t *testing.T, tail *Tail) (string, error) {
 			}
 		case err := <-tail.Errors:
 			return "", err
-		case <-time.After(500 * time.Millisecond):
+		case <-timer.C:
 			return "", errors.New("timeout")
 		}
 	}
@@ -227,7 +235,7 @@ func TestTailFile_Rotate(t *testing.T) {
 			}
 			if i == 0 {
 				// wait for starting to tail...
-				time.Sleep(200 * time.Millisecond)
+				time.Sleep(2 * time.Second)
 			}
 
 			// start to write logs
