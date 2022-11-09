@@ -99,7 +99,7 @@ func writeFile(t *testing.T, filename string, file *os.File) error {
 				return err
 			}
 		}
-		time.Sleep(9 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
@@ -244,7 +244,7 @@ func TestTailFile_Rotate(t *testing.T) {
 				defer wg.Done()
 				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
 			}()
-			time.Sleep(openRetryInterval)
+			time.Sleep(2 * openRetryInterval)
 
 			// Rotate log file, and start writing logs into a new file.
 			// While, some logs are still written into the old file.
@@ -285,7 +285,7 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 			t.Error(err)
 			return
 		}
-		time.Sleep(9 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
