@@ -32,7 +32,7 @@ type Tail struct {
 	Lines  <-chan *Line
 	Errors <-chan error
 
-	opt      Options
+	opts     Options
 	lines    chan<- *Line
 	errors   chan<- error
 	filename string
@@ -72,6 +72,7 @@ func NewTailFileWithOptions(filename string, opts Options) (*Tail, error) {
 	parent := &Tail{
 		Lines:    lines,
 		Errors:   errs,
+		opts:     opts,
 		lines:    lines,
 		errors:   errs,
 		filename: filename,
@@ -102,6 +103,7 @@ func NewTailReaderWithOptions(reader io.Reader, opts Options) (*Tail, error) {
 	parent := &Tail{
 		Lines:  lines,
 		Errors: errs,
+		opts:   opts,
 		lines:  lines,
 		errors: errs,
 		ctx:    ctx,
@@ -151,8 +153,8 @@ func (t *Tail) wait() {
 func (t *Tail) open(seek int) (*tail, error) {
 	const defaultBufSize = 4096
 	bufSize := defaultBufSize
-	if t.opt.MaxBytesLine != 0 && int64(bufSize) > t.opt.MaxBytesLine {
-		bufSize = int(t.opt.MaxBytesLine)
+	if t.opts.MaxBytesLine != 0 && int64(bufSize) > t.opts.MaxBytesLine {
+		bufSize = int(t.opts.MaxBytesLine)
 	}
 
 	watcher, err := fsnotify.NewWatcher()
@@ -360,7 +362,7 @@ func (t *tail) restrict() error {
 
 // tail reads lines until EOF
 func (t *tail) tail() error {
-	opts := t.parent.opt
+	opts := t.parent.opts
 	for {
 		line, err := t.reader.ReadSlice('\n')
 		t.buf.Write(line)

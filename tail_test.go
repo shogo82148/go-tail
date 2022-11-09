@@ -99,7 +99,7 @@ func writeFile(t *testing.T, filename string, file *os.File) error {
 				return err
 			}
 		}
-		time.Sleep(9 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
@@ -244,7 +244,7 @@ func TestTailFile_Rotate(t *testing.T) {
 				defer wg.Done()
 				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
 			}()
-			time.Sleep(openRetryInterval)
+			time.Sleep(2 * openRetryInterval)
 
 			// Rotate log file, and start writing logs into a new file.
 			// While, some logs are still written into the old file.
@@ -285,10 +285,36 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 			t.Error(err)
 			return
 		}
-		time.Sleep(9 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 
 	if err := file.Close(); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestLineLimit(t *testing.T) {
+	t.Parallel()
+	reader, writer := io.Pipe()
+
+	go func() {
+		defer writer.Close()
+		for i := 0; i < 1024*1024; i++ {
+			writer.Write([]byte{'a'})
+		}
+	}()
+	tail, err := NewTailReaderWithOptions(reader, Options{
+		MaxBytesLine: 1024,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer reader.Close()
+	defer tail.Close()
+
+	for line := range tail.Lines {
+		if len(line.Text) != 1024 {
+			t.Errorf("unexpected length: %d", len(line.Text))
+		}
 	}
 }
