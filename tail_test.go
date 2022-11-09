@@ -235,7 +235,7 @@ func TestTailFile_Rotate(t *testing.T) {
 			}
 			if i == 0 {
 				// wait for starting to tail...
-				time.Sleep(2 * time.Second)
+				time.Sleep(2 * openRetryInterval)
 			}
 
 			// start to write logs
