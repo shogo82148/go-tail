@@ -244,7 +244,7 @@ func TestTailFile_Rotate(t *testing.T) {
 				defer wg.Done()
 				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
 			}()
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(openRetryInterval)
 
 			// Rotate log file, and start writing logs into a new file.
 			// While, some logs are still written into the old file.
