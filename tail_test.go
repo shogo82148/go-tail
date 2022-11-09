@@ -312,9 +312,20 @@ func TestLineLimit(t *testing.T) {
 	defer reader.Close()
 	defer tail.Close()
 
-	for line := range tail.Lines {
-		if len(line.Text) != 1024 {
-			t.Errorf("unexpected length: %d", len(line.Text))
+LOOP:
+	for {
+		select {
+		case line, ok := <-tail.Lines:
+			if !ok {
+				break LOOP
+			}
+			if len(line.Text) != 1024 {
+				t.Errorf("unexpected length: %d", len(line.Text))
+			}
+		case err := <-tail.Errors:
+			if err != nil {
+				t.Error(err)
+			}
 		}
 	}
 }

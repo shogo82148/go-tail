@@ -115,7 +115,7 @@ func NewTailReaderWithOptions(reader io.Reader, opts Options) (*Tail, error) {
 	}
 	t := &tail{
 		parent: parent,
-		reader: bufio.NewReader(r),
+		reader: parent.newReader(r),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -151,12 +151,6 @@ func (t *Tail) wait() {
 // open opens the target file.
 // If it does not exist, wait for creating new file.
 func (t *Tail) open(seek int) (*tail, error) {
-	const defaultBufSize = 4096
-	bufSize := defaultBufSize
-	if t.opts.MaxBytesLine != 0 && int64(bufSize) > t.opts.MaxBytesLine {
-		bufSize = int(t.opts.MaxBytesLine)
-	}
-
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -184,7 +178,7 @@ func (t *Tail) open(seek int) (*tail, error) {
 			return &tail{
 				parent:  t,
 				file:    file,
-				reader:  bufio.NewReaderSize(r, bufSize),
+				reader:  t.newReader(r),
 				watcher: watcher,
 				ctx:     ctx,
 				cancel:  cancel,
@@ -201,6 +195,15 @@ func (t *Tail) open(seek int) (*tail, error) {
 		case <-timer.C:
 		}
 	}
+}
+
+func (t *Tail) newReader(r io.Reader) *bufio.Reader {
+	const defaultBufSize = 4096
+	bufSize := defaultBufSize
+	if t.opts.MaxBytesLine != 0 && int64(bufSize) > t.opts.MaxBytesLine {
+		bufSize = int(t.opts.MaxBytesLine)
+	}
+	return bufio.NewReaderSize(r, bufSize)
 }
 
 // runFile tails target files
@@ -366,14 +369,13 @@ func (t *tail) tail() error {
 	for {
 		line, err := t.reader.ReadSlice('\n')
 		t.buf.Write(line)
-		if err == bufio.ErrBufferFull {
+		if errors.Is(err, bufio.ErrBufferFull) {
 			// the reader cannot find EOL in its buffer.
 			// continue to read a line.
 			if opts.MaxBytesLine == 0 || int64(t.buf.Len()) < opts.MaxBytesLine {
 				continue
 			}
-		}
-		if err != nil {
+		} else if err != nil {
 			return err
 		}
 		t.parent.lines <- &Line{t.buf.String(), time.Now()}
