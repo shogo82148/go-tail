@@ -191,7 +191,7 @@ func writeWriter(t *testing.T, writer io.Writer) error {
 func receive(t *testing.T, tail *Tail) (string, error) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
-	actual := ""
+	var actual strings.Builder
 	for {
 		if !timer.Stop() {
 			<-timer.C
@@ -204,9 +204,9 @@ func receive(t *testing.T, tail *Tail) (string, error) {
 			} else {
 				t.Logf("received: %s...(snip)", line.Text[:100])
 			}
-			actual += line.Text
+			actual.WriteString(line.Text)
 			if line.Text == EOFMarker {
-				return actual, nil
+				return actual.String(), nil
 			}
 		case err := <-tail.Errors:
 			return "", err
@@ -222,11 +222,9 @@ func TestTailFile_Rotate(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		filename := filepath.Join(tmpdir, "test.log")
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			i := i
 			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
 			if err != nil {
@@ -239,11 +237,9 @@ func TestTailFile_Rotate(t *testing.T) {
 			}
 
 			// start to write logs
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				writeFileAndClose(t, file, fmt.Sprintf("file: %d\n", i))
-			}()
+			})
 			time.Sleep(2 * openRetryInterval)
 
 			// Rotate log file, and start writing logs into a new file.
@@ -252,7 +248,7 @@ func TestTailFile_Rotate(t *testing.T) {
 				t.Error("failed to rename", err)
 			}
 		}
-	}()
+	})
 
 	tail, err := NewTailFile(filepath.Join(tmpdir, "test.log"))
 	if err != nil {
@@ -278,7 +274,7 @@ func TestTailFile_Rotate(t *testing.T) {
 }
 
 func writeFileAndClose(t *testing.T, file *os.File, line string) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_, err := file.WriteString(line)
 		if err != nil {
 			_ = file.Close()
@@ -299,7 +295,7 @@ func TestLineLimit(t *testing.T) {
 
 	go func() {
 		defer writer.Close()
-		for i := 0; i < 1024*1024; i++ {
+		for range 1024 * 1024 {
 			writer.Write([]byte{'a'})
 		}
 	}()

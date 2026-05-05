@@ -80,11 +80,9 @@ func NewTailFileWithOptions(filename string, opts Options) (*Tail, error) {
 		cancel:   cancel,
 	}
 
-	parent.wg.Add(1)
-	go func() {
-		defer parent.wg.Done()
+	parent.wg.Go(func() {
 		parent.runFile(os.SEEK_END)
-	}()
+	})
 	go parent.wait()
 
 	return parent, nil
@@ -120,11 +118,9 @@ func NewTailReaderWithOptions(reader io.Reader, opts Options) (*Tail, error) {
 		cancel: cancel,
 	}
 
-	parent.wg.Add(1)
-	go func() {
-		defer parent.wg.Done()
+	parent.wg.Go(func() {
 		t.runReader()
-	}()
+	})
 	go parent.wait()
 
 	return parent, nil
@@ -216,11 +212,9 @@ func (t *Tail) runFile(seek int) {
 		return
 	}
 
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
+	t.wg.Go(func() {
 		child.runFile()
-	}()
+	})
 }
 
 // runFile tails a file
@@ -232,9 +226,7 @@ func (t *tail) runFile() {
 	ch := make(chan struct{}, 1)
 	defer close(ch)
 
-	t.parent.wg.Add(1)
-	go func() {
-		defer t.parent.wg.Done()
+	t.parent.wg.Go(func() {
 		for {
 			if err := t.restrict(); err != nil {
 				select {
@@ -263,7 +255,7 @@ func (t *tail) runFile() {
 				return
 			}
 		}
-	}()
+	})
 
 	var renamed bool
 	var waiting bool // waiting for writing new lines?
@@ -278,11 +270,9 @@ func (t *tail) runFile() {
 				// log rotation is detected.
 				if !renamed {
 					// start to watch creating new file.
-					t.parent.wg.Add(1)
-					go func() {
-						defer t.parent.wg.Done()
+					t.parent.wg.Go(func() {
 						t.parent.runFile(io.SeekStart)
-					}()
+					})
 
 					// wait a little, and stop tailing old file.
 					go func() {
