@@ -289,6 +289,66 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 	}
 }
 
+// TestTailFile_TruncateBufferReset verifies that after a file is truncated,
+// any data that was buffered in bufio.Reader or accumulated in the line buffer
+// before the truncation is discarded and does not appear in subsequent output.
+func TestTailFile_TruncateBufferReset(t *testing.T) {
+	t.Parallel()
+	tmpdir := t.TempDir()
+	filename := filepath.Join(tmpdir, "test.log")
+
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	tail, err := NewTailFile(filename)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer tail.Close()
+
+	// Wait for tail to start.
+	time.Sleep(100 * time.Millisecond)
+
+	// Write partial data without a newline so it gets buffered inside the
+	// tail's line accumulation buffer but is never emitted as a complete line.
+	// After truncation this stale data must NOT appear in output.
+	if _, err := file.WriteString("STALE_DATA_WITHOUT_NEWLINE"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	// Truncate the file to simulate log rotation by truncation.
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(filename, 0); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// Write fresh lines after truncation.
+	if _, err := file.WriteString("fresh line\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(EOFMarker); err != nil {
+		t.Fatal(err)
+	}
+
+	actual, err := receive(t, tail)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The stale buffered data must not be prepended to the first fresh line.
+	expected := "fresh line\n" + EOFMarker
+	if actual != expected {
+		t.Errorf("got %q\nwant %q", actual, expected)
+	}
+}
+
 func TestLineLimit(t *testing.T) {
 	t.Parallel()
 	reader, writer := io.Pipe()
