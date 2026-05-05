@@ -81,7 +81,7 @@ func NewTailFileWithOptions(filename string, opts Options) (*Tail, error) {
 	}
 
 	parent.wg.Go(func() {
-		parent.runFile(os.SEEK_END)
+		parent.runFile(io.SeekEnd)
 	})
 	go parent.wait()
 
