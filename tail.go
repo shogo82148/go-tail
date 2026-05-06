@@ -52,6 +52,7 @@ type tail struct {
 	parent *Tail
 
 	file    *os.File
+	r       io.Reader // underlying reader passed to reader
 	reader  *bufio.Reader
 	watcher *fsnotify.Watcher
 	buf     bytes.Buffer
@@ -174,6 +175,7 @@ func (t *Tail) open(seek int) (*tail, error) {
 			return &tail{
 				parent:  t,
 				file:    file,
+				r:       r,
 				reader:  t.newReader(r),
 				watcher: watcher,
 				ctx:     ctx,
@@ -349,6 +351,9 @@ func (t *tail) restrict() error {
 		if err != nil {
 			return err
 		}
+		// discard any buffered data so the reader picks up from the new position.
+		t.reader.Reset(t.r)
+		t.buf.Reset()
 	}
 	return nil
 }
