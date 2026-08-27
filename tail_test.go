@@ -44,13 +44,16 @@ func TestTailFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go writeFile(t, filename, file)
+	go func() {
+		if err := writeFile(t, filename, file); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}()
 
 	tail, err := NewTailFile(filename)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer tail.Close()
 
 	expected := strings.Join(Logs, "")
 	actual, err := receive(t, tail)
@@ -60,10 +63,14 @@ func TestTailFile(t *testing.T) {
 	if actual != expected {
 		t.Errorf("got %s\nwant %s", actual, expected)
 	}
+
+	if err := tail.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeFile(t *testing.T, filename string, file *os.File) error {
-	defer file.Close()
+	defer file.Close() //nolint:errcheck // ignore error because we are going to return an error.
 
 	// wait for starting to tail...
 	time.Sleep(100 * time.Millisecond)
@@ -112,7 +119,11 @@ func TestTailReader(t *testing.T) {
 	t.Parallel()
 	reader, writer := io.Pipe()
 
-	go writeWriter(t, writer)
+	go func() {
+		if err := writeWriter(t, writer); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}()
 	tail, err := NewTailReader(reader)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -127,8 +138,13 @@ func TestTailReader(t *testing.T) {
 		t.Errorf("got %s\nwant %s", actual, expected)
 	}
 
-	reader.Close()
-	writer.Close()
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	select {
 	case _, ok := <-tail.Lines:
 		if ok {
@@ -137,6 +153,7 @@ func TestTailReader(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Error("want closed, but not")
 	}
+
 	select {
 	case _, ok := <-tail.Errors:
 		if ok {
@@ -145,14 +162,15 @@ func TestTailReader(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Error("want closed, but not")
 	}
-	tail.Close()
+
+	if err := tail.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestTailReader_Close(t *testing.T) {
 	t.Parallel()
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
 
 	tail, err := NewTailReader(reader)
 	if err != nil {
@@ -165,6 +183,13 @@ func TestTailReader_Close(t *testing.T) {
 	_, ok := <-tail.Lines
 	if ok {
 		t.Error("want closed, but open")
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -256,7 +281,9 @@ func TestTailFile_Rotate(t *testing.T) {
 	}
 	go func() {
 		wg.Wait()
-		tail.Close()
+		if err := tail.Close(); err != nil {
+			t.Error(err)
+		}
 	}()
 	go func() {
 		for err := range tail.Errors {
@@ -277,7 +304,7 @@ func writeFileAndClose(t *testing.T, file *os.File, line string) {
 	for range 100 {
 		_, err := file.WriteString(line)
 		if err != nil {
-			_ = file.Close()
+			file.Close() //nolint:errcheck // ignore error because we are going to return an error.
 			t.Error(err)
 			return
 		}
@@ -301,13 +328,21 @@ func TestTailFile_TruncateBufferReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	tail, err := NewTailFile(filename)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer tail.Close()
+	defer func() {
+		if err := tail.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Wait for tail to start.
 	time.Sleep(100 * time.Millisecond)
@@ -354,9 +389,16 @@ func TestLineLimit(t *testing.T) {
 	reader, writer := io.Pipe()
 
 	go func() {
-		defer writer.Close()
+		defer func() {
+			if err := writer.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		for range 1024 * 1024 {
-			writer.Write([]byte{'a'})
+			if _, err := writer.Write([]byte{'a'}); err != nil {
+				t.Error(err)
+				return
+			}
 		}
 	}()
 	tail, err := NewTailReaderWithOptions(reader, Options{
@@ -365,8 +407,16 @@ func TestLineLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer reader.Close()
-	defer tail.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	defer func() {
+		if err := tail.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 
 LOOP:
 	for {
