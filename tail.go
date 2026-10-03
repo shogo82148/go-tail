@@ -157,13 +157,13 @@ func (t *Tail) open(seek int) (*tail, error) {
 		if err == nil {
 			// success, seek and watch the file.
 			if _, err := file.Seek(0, seek); err != nil {
-				file.Close()
-				watcher.Close()
+				file.Close()    //nolint:errcheck // ignore error because we are going to return an error.
+				watcher.Close() //nolint:errcheck // ignore error because we are going to return an error.
 				return nil, err
 			}
 			if err := watcher.Add(t.filename); err != nil {
-				file.Close()
-				watcher.Close()
+				file.Close()    //nolint:errcheck // ignore error because we are going to return an error.
+				watcher.Close() //nolint:errcheck // ignore error because we are going to return an error.
 				return nil, err
 			}
 			ctx, cancel := context.WithCancel(t.ctx)
@@ -221,7 +221,7 @@ func (t *Tail) runFile(seek int) {
 
 // runFile tails a file
 func (t *tail) runFile() {
-	defer t.watcher.Close()
+	defer t.watcher.Close() //nolint:errcheck // ignore error because no need to handle error when closing watcher.
 	defer t.cancel()
 
 	cherr := make(chan error, 1)
